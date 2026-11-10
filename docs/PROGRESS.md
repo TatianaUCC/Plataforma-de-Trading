@@ -1,7 +1,7 @@
 # Progreso del Proyecto — Plataforma de Trading
 
-> Última actualización: 9 de noviembre de 2026
-> Estado general: Planificación completada — sin código implementado aún
+> Última actualización: 10 de noviembre de 2026
+> Estado general: Etapa 1 completada y verificada en vivo — infraestructura operativa
 
 ---
 
@@ -10,7 +10,7 @@
 | Etapa | Estado | Fecha inicio | Fecha fin | Notas |
 |---|---|---|---|---|
 | 0 — Estructura Maven | ✅ Completado | 9 Nov 2026 | 9 Nov 2026 | 8 pom.xml, 32/32 checks OK |
-| 1 — Infraestructura Docker | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | docker-compose.yml + init.sql + rabbitmq.conf · validación en vivo pendiente (Docker daemon inactivo) |
+| 1 — Infraestructura Docker | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | Todos los servicios healthy. Topics Kafka verificados con --describe. Ver detalle abajo. |
 | 2 — Modelo de dominio + tests | ⬜ Pendiente | — | — | — |
 | 3 — market_data_feed | ⬜ Pendiente | — | — | — |
 | 4 — live_dashboard_backend | ⬜ Pendiente | — | — | — |
@@ -27,13 +27,30 @@
 
 ## Pruebas ejecutadas
 
-_Ninguna todavía._
+### Etapa 1 — Infraestructura Docker (10 Nov 2026, verificación manual)
+
+| Servicio | Estado verificado | Método |
+|---|---|---|
+| `zookeeper` | ✅ healthy | `docker compose ps` |
+| `kafka` | ✅ healthy | `docker compose ps` |
+| `rabbitmq` | ✅ healthy | `docker compose ps` + http://localhost:15672 |
+| `postgres-db` | ✅ healthy | `docker compose ps` |
+| `kafka-init` | ✅ exitoso (exit 0) | `docker compose logs kafka-init` |
+
+**Topics de Kafka verificados con `kafka-topics --describe`:**
+
+| Topic | Particiones | Replication Factor | Estado |
+|---|---|---|---|
+| `historical_ticks` | 5 | 1 | ✅ Creado |
+| `trading_signals` | 3 | 1 | ✅ Creado |
 
 ---
 
 ## Errores conocidos
 
-_Ninguno todavía._
+### Resueltos en Etapa 1
+- **Zookeeper healthcheck fallaba** con `ruok` — resuelto añadiendo `KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=srvr,ruok"`.
+- **kafka-init entregaba el script fragmentado** a `/bin/sh -c` — resuelto usando `command` como lista YAML de un único elemento (`- |`), que preserva el script como string único.
 
 ---
 
@@ -68,32 +85,19 @@ _Ninguno todavía._
 - ❌ Resolución de dependencias Maven en línea (Docker no activo)
 - ❌ Clases Java (no corresponde en esta etapa)
 
-## Sesión — 10 Nov 2026
+## Sesión — 10 Nov 2026 (continuación — validación en vivo)
 
-### Etapa 1 completada: Infraestructura Docker Compose
+### Infraestructura verificada manualmente con Docker Desktop activo
 
-**Archivos creados:**
-- `docker-compose.yml` — Zookeeper, Kafka, kafka-init, RabbitMQ, PostgreSQL
-- `infra/postgres/init.sql` — 3 tablas + índices
-- `infra/rabbitmq/rabbitmq.conf` — configuración mínima
+Correcciones aplicadas al `docker-compose.yml` durante las pruebas:
+1. **Zookeeper:** añadida variable `KAFKA_OPTS` para habilitar comandos `srvr` y `ruok` en la whitelist de four-letter commands.
+2. **kafka-init:** corregida la forma de pasar el script a `/bin/sh -c` — se usa `command` como lista YAML de un único elemento (`- |`) para que el script llegue como un único argumento y no fragmentado.
 
-**Validaciones ejecutadas (sin daemon Docker):**
-- ✅ 32/32 checks de contenido del docker-compose.yml (secciones, servicios, puertos, healthchecks, volúmenes)
-- ✅ 9/9 checks del init.sql (tablas, FK, índices, tipos)
-- ✅ Revisión de seguridad: sin tokens, claves privadas ni credenciales reales
-- ⚠️ `docker compose up` NO ejecutado — Docker daemon no estaba activo
-
-**GitHub:** commit `0e41f5b` en `origin/main`
+Todos los servicios alcanzaron estado `healthy`. Los dos topics de Kafka fueron creados correctamente y verificados con `kafka-topics --describe`.
 
 ### Próxima tarea exacta:
-**Etapa 2 — Modelo de dominio + pruebas unitarias**
-Implementar en `analytics_engine`:
-- Records: `AssetCode`, `TickPriceRecord`, `SignalPayloadRecord`
-- Dominio: `AssetTracker`, `TradingSignal`
-- Strategy: `IndicatorStrategy`, `SimpleMovingAverageStrategy`
-- State: `AssetState`, `NormalState`, `MomentumAltoState`, `AlertaDisparadaState`
-- Ports: `SignalPublisherPort`, `SignalRepositoryPort`
-- Tests: AAA con JUnit 5 + Mockito (sin Spring, sin BD)
+**Etapa 2 — `market_data_feed`**
+Primer microservicio Java. Genera ticks de precio simulados (Random Walk ±2%) para 5 activos y los publica en RabbitMQ. Ver `IMPLEMENTATION_PLAN.md` Etapa 3.
 
 ---
 

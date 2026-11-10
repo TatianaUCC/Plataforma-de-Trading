@@ -25,10 +25,10 @@ Genera precios aleatorios para 5 activos (BTC, ETH, EURUSD, GOOGL, AMZN) y los d
 | Tecnología | Versión | Uso |
 |---|---|---|
 | Java | 17 LTS | Lenguaje obligatorio |
-| Spring Boot | 3.2.x | Framework para microservicios |
-| Apache Kafka | 3.x (imagen Bitnami) | Cold-Path: log de eventos persistente |
-| RabbitMQ | 3.x (imagen management) | Hot-Path: distribución de ticks |
-| PostgreSQL | 15 | Persistencia relacional (señales, ticks) |
+| Spring Boot | 3.2.5 | Framework para microservicios |
+| Apache Kafka | confluentinc/cp-kafka:7.6.1 | Cold-Path: log de eventos persistente |
+| RabbitMQ | rabbitmq:3.13-management-alpine | Hot-Path: distribución de ticks |
+| PostgreSQL | postgres:15-alpine | Persistencia relacional (señales, ticks) |
 | Spring AMQP | incluido en Spring Boot | Cliente RabbitMQ |
 | Spring Kafka | incluido en Spring Boot | Cliente Kafka |
 | Spring WebSocket | incluido en Spring Boot | Dashboards en tiempo real |
@@ -114,58 +114,79 @@ Ver `docs/DECISIONS.md` para justificaciones completas (D-01 a D-16).
 
 ## Última etapa completada
 
-**Etapa 1 — Infraestructura Docker Compose** — 10 de noviembre de 2026
+**Etapa 1 — Infraestructura Docker Compose** — 10 de noviembre de 2026 ✅ VERIFICADA EN VIVO
 
-Archivos: `docker-compose.yml`, `infra/postgres/init.sql`, `infra/rabbitmq/rabbitmq.conf`.
-Commit `0e41f5b` en `origin/main`.
-Validación en vivo pendiente: ejecutar `docker compose up zookeeper kafka rabbitmq postgres-db -d` cuando Docker Desktop esté activo y verificar `docker compose ps`.
+### Archivos de infraestructura
+- `docker-compose.yml` — Zookeeper, Kafka, kafka-init, RabbitMQ, PostgreSQL
+- `infra/postgres/init.sql` — tablas `tick_records`, `trading_signals`, `notification_log` + índices
+- `infra/rabbitmq/rabbitmq.conf` — configuración mínima
 
----
+### Resultados de la verificación manual
+Todos los servicios alcanzaron estado `healthy`:
 
-## Pendiente de validación antes de Etapa 2
+| Servicio | Estado |
+|---|---|
+| `zookeeper` | ✅ healthy |
+| `kafka` | ✅ healthy |
+| `rabbitmq` | ✅ healthy |
+| `postgres-db` | ✅ healthy |
+| `kafka-init` | ✅ exit 0 |
 
-> **Importante:** Antes de comenzar Etapa 2, activar Docker Desktop y ejecutar:
-> ```
-> docker compose up zookeeper kafka rabbitmq postgres-db -d
-> docker compose ps
-> ```
-> Verificar que los 4 servicios estén `healthy`. Si alguno falla, corregir antes de avanzar.
-> Ver sección "Comandos de verificación" más abajo.
+Topics verificados con `kafka-topics --describe`:
+- `historical_ticks`: 5 particiones, replication-factor 1 ✅
+- `trading_signals`: 3 particiones, replication-factor 1 ✅
+
+### Correcciones aplicadas durante las pruebas
+1. **Zookeeper:** `KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=srvr,ruok"` para habilitar el healthcheck con `ruok`.
+2. **kafka-init:** `command` como lista YAML de un único elemento (`- |`) para pasar el script completo como un único argumento a `/bin/sh -c`.
 
 ---
 
 ## Próxima tarea exacta
 
-**Etapa 2 — Modelo de dominio + pruebas unitarias** (en `analytics_engine`)
+**Etapa 2 — Microservicio `market_data_feed`**
 
-Records, entidades ricas, Strategy, State, interfaces de puerto y tests JUnit 5 + Mockito.
+Primer microservicio Java Spring Boot. Genera ticks de precio simulados con Random Walk ±2% para 5 activos y los publica en RabbitMQ.
+
+Archivos a crear en `services/market_data_feed/src/`:
+- `MarketDataFeedApplication.java`
+- `config/RabbitMQConfig.java` — declara el Topic Exchange `market_ticks`
+- `domain/model/TickPriceRecord.java` — record inmutable con Fail-Fast
+- `domain/model/AssetCode.java` — record inmutable con Fail-Fast
+- `service/PriceGeneratorService.java` — genera precios con `@Scheduled`
+- `adapter/out/RabbitMQTickPublisher.java` — publica en RabbitMQ
+- `resources/application.yml`
+
+**Verificación:** mensajes llegando al exchange `market_ticks` en http://localhost:15672.
 
 ---
 
 ## Comandos para retomar el trabajo
 
 ```bash
-# Ver el estado actual del proyecto
-ls "c:\Users\Asus TUF\Documents\Sistemas\trabajo final"
+# Levantar la infraestructura (ya probada y funcional)
+docker compose up zookeeper kafka rabbitmq postgres-db -d
+docker compose ps
 
-# Levantar solo la infraestructura (cuando esté creado docker-compose.yml)
-docker compose up kafka zookeeper rabbitmq postgres-db -d
+# Verificar topics de Kafka
+docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list
+docker exec kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic historical_ticks
+docker exec kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic trading_signals
 
-# Ver logs de un servicio específico
-docker compose logs analytics_engine -f
+# RabbitMQ Management UI
+# http://localhost:15672  (guest / guest)
 
 # Compilar un microservicio específico
-cd services/analytics_engine
+cd services/market_data_feed
 mvn clean package -DskipTests
 
-# Ejecutar pruebas unitarias de un microservicio
-cd services/analytics_engine
-mvn test
-
-# Levantar todo el sistema
+# Levantar todo el sistema (cuando estén los Dockerfiles — Etapa 9)
 docker compose up --build
 
-# Parar todo
+# Parar infraestructura sin borrar datos
+docker compose down
+
+# Parar y borrar volúmenes (solo si es necesario reiniciar desde cero)
 docker compose down -v
 ```
 
