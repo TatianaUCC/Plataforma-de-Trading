@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ===== Spring Boot Parent ===== -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/>
+    </parent>
+
+    <!-- ===== Project coordinates ===== -->
+    <groupId>com.trading</groupId>
+    <artifactId>market-data-feed</artifactId>
+    <version>1.0.0</version>
+    <name>market_data_feed</name>
+    <description>
+        Genera ticks de precio simulados (Random Walk) y los publica en el
+        Topic Exchange 'market_ticks' de RabbitMQ.
+        Responsabilidades: producir TickPriceRecord, publicar con routing key ticks.*.*
+    </description>
+
+    <!-- ===== Java version ===== -->
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <!-- ===== Dependencies ===== -->
+    <dependencies>
+
+        <!-- Spring Boot base (logging, auto-config) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- RabbitMQ (Spring AMQP) — único broker que usa este servicio -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- Jackson — serialización JSON de TickPriceRecord a RabbitMQ -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- ===== Testing ===== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <!-- Incluye JUnit 5 + Mockito + AssertJ -->
+        </dependency>
+
+    </dependencies>
+
+    <!-- ===== Build ===== -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

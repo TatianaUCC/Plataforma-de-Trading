@@ -1,0 +1,42 @@
+# ===== Maven build output =====
+target/
+*.jar
+*.war
+*.ear
+
+# ===== Maven wrapper =====
+!.mvn/wrapper/maven-wrapper.jar
+
+# ===== Secretos y configuración local =====
+.env
+.env.*
+*.env
+application-local.yml
+application-local.properties
+*-secret*
+*-credentials*
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== IDEs =====
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.code-workspace
+.settings/
+.classpath
+.project
+.factorypath
+
+# ===== Sistema operativo =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Docker volúmenes locales (no subir datos de BD) =====
+docker-volumes/
+postgres-data/
