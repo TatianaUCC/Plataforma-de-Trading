@@ -10,7 +10,7 @@
 | Etapa | Estado | Fecha inicio | Fecha fin | Notas |
 |---|---|---|---|---|
 | 0 — Estructura Maven | ✅ Completado | 9 Nov 2026 | 9 Nov 2026 | 8 pom.xml, 32/32 checks OK |
-| 1 — Infraestructura Docker | ⬜ Pendiente | — | — | — |
+| 1 — Infraestructura Docker | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | docker-compose.yml + init.sql + rabbitmq.conf · validación en vivo pendiente (Docker daemon inactivo) |
 | 2 — Modelo de dominio + tests | ⬜ Pendiente | — | — | — |
 | 3 — market_data_feed | ⬜ Pendiente | — | — | — |
 | 4 — live_dashboard_backend | ⬜ Pendiente | — | — | — |
@@ -68,8 +68,32 @@ _Ninguno todavía._
 - ❌ Resolución de dependencias Maven en línea (Docker no activo)
 - ❌ Clases Java (no corresponde en esta etapa)
 
+## Sesión — 10 Nov 2026
+
+### Etapa 1 completada: Infraestructura Docker Compose
+
+**Archivos creados:**
+- `docker-compose.yml` — Zookeeper, Kafka, kafka-init, RabbitMQ, PostgreSQL
+- `infra/postgres/init.sql` — 3 tablas + índices
+- `infra/rabbitmq/rabbitmq.conf` — configuración mínima
+
+**Validaciones ejecutadas (sin daemon Docker):**
+- ✅ 32/32 checks de contenido del docker-compose.yml (secciones, servicios, puertos, healthchecks, volúmenes)
+- ✅ 9/9 checks del init.sql (tablas, FK, índices, tipos)
+- ✅ Revisión de seguridad: sin tokens, claves privadas ni credenciales reales
+- ⚠️ `docker compose up` NO ejecutado — Docker daemon no estaba activo
+
+**GitHub:** commit `0e41f5b` en `origin/main`
+
 ### Próxima tarea exacta:
-**Etapa 1:** Crear `docker-compose.yml` con solo los 4 servicios de infraestructura (Kafka, Zookeeper, RabbitMQ, PostgreSQL) + `infra/postgres/init.sql` con el esquema de las 3 tablas.
+**Etapa 2 — Modelo de dominio + pruebas unitarias**
+Implementar en `analytics_engine`:
+- Records: `AssetCode`, `TickPriceRecord`, `SignalPayloadRecord`
+- Dominio: `AssetTracker`, `TradingSignal`
+- Strategy: `IndicatorStrategy`, `SimpleMovingAverageStrategy`
+- State: `AssetState`, `NormalState`, `MomentumAltoState`, `AlertaDisparadaState`
+- Ports: `SignalPublisherPort`, `SignalRepositoryPort`
+- Tests: AAA con JUnit 5 + Mockito (sin Spring, sin BD)
 
 ---
 

@@ -114,31 +114,31 @@ Ver `docs/DECISIONS.md` para justificaciones completas (D-01 a D-16).
 
 ## Última etapa completada
 
-**Etapa 0 — Estructura Maven base** — 9 de noviembre de 2026
+**Etapa 1 — Infraestructura Docker Compose** — 10 de noviembre de 2026
 
-8 `pom.xml` creados y verificados. Spring Boot 3.2.5, Java 17.
-32/32 checks de dependencias pasados. Ver `PROGRESS.md` para el detalle.
+Archivos: `docker-compose.yml`, `infra/postgres/init.sql`, `infra/rabbitmq/rabbitmq.conf`.
+Commit `0e41f5b` en `origin/main`.
+Validación en vivo pendiente: ejecutar `docker compose up zookeeper kafka rabbitmq postgres-db -d` cuando Docker Desktop esté activo y verificar `docker compose ps`.
 
 ---
 
-## Errores conocidos
+## Pendiente de validación antes de Etapa 2
 
-- **Maven no está en el PATH del sistema host.** La resolución de dependencias online no pudo ejecutarse localmente. Se resolverá automáticamente cuando Docker esté activo en la Etapa 1 (el Dockerfile usa `mvn dependency:go-offline` dentro del contenedor).
-- Esto **no es un problema** — los `pom.xml` son estructuralmente correctos y Spring Boot 3.2.5 es una versión estable y ampliamente disponible en Maven Central.
+> **Importante:** Antes de comenzar Etapa 2, activar Docker Desktop y ejecutar:
+> ```
+> docker compose up zookeeper kafka rabbitmq postgres-db -d
+> docker compose ps
+> ```
+> Verificar que los 4 servicios estén `healthy`. Si alguno falla, corregir antes de avanzar.
+> Ver sección "Comandos de verificación" más abajo.
 
 ---
 
 ## Próxima tarea exacta
 
-**Etapa 1 — Infraestructura Docker**
+**Etapa 2 — Modelo de dominio + pruebas unitarias** (en `analytics_engine`)
 
-Crear:
-1. `docker-compose.yml` con Kafka (Bitnami), Zookeeper, RabbitMQ (management), PostgreSQL 15 — solo infraestructura, sin microservicios Java todavía
-2. `infra/postgres/init.sql` con las 3 tablas: `tick_records`, `trading_signals`, `notification_log`
-3. Verificar que `docker compose up kafka zookeeper rabbitmq postgres-db` levanta sin errores
-4. Confirmar acceso a RabbitMQ Management (http://localhost:15672)
-
-**No avanzar a Etapa 2 sin que la infraestructura levante correctamente.**
+Records, entidades ricas, Strategy, State, interfaces de puerto y tests JUnit 5 + Mockito.
 
 ---
 
