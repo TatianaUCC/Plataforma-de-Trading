@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading — Live Ticker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 1.4rem;
+            color: #58a6ff;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+        #status {
+            font-size: 0.75rem;
+            margin-bottom: 20px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .connected    { background: #1a4731; color: #3fb950; }
+        .disconnected { background: #3d1f1f; color: #f85149; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+        th {
+            text-align: left;
+            padding: 8px 12px;
+            border-bottom: 1px solid #30363d;
+            color: #8b949e;
+            font-weight: normal;
+            letter-spacing: 1px;
+            font-size: 0.75rem;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        tr:hover td { background: #161b22; }
+        .asset     { color: #79c0ff; font-weight: bold; }
+        .price     { color: #e6edf3; }
+        .price.up  { color: #3fb950; }
+        .price.dn  { color: #f85149; }
+        .time      { color: #8b949e; font-size: 0.8rem; }
+        #log {
+            margin-top: 20px;
+            font-size: 0.72rem;
+            color: #484f58;
+            max-height: 80px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>&#9679; LIVE TICKER</h1>
+    <span id="status" class="disconnected">DESCONECTADO</span>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ACTIVO</th>
+                <th>PRECIO</th>
+                <th>ÚLTIMA ACTUALIZACIÓN</th>
+            </tr>
+        </thead>
+        <tbody id="ticker-body"></tbody>
+    </table>
+
+    <div id="log"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script>
+        const prices = {};
+        const tbody  = document.getElementById('ticker-body');
+        const status = document.getElementById('status');
+        const log    = document.getElementById('log');
+
+        function fmt(price, asset) {
+            if (asset === 'EURUSD') return price.toFixed(5);
+            if (price > 100)       return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return price.toFixed(4);
+        }
+
+        function fmtTime(isoStr) {
+            const d = new Date(isoStr);
+            return d.toLocaleTimeString('es-CO', { hour12: false });
+        }
+
+        function updateRow(tick) {
+            const prev = prices[tick.asset];
+            const dir  = prev === undefined ? '' : (tick.price >= prev ? 'up' : 'dn');
+            prices[tick.asset] = tick.price;
+
+            let row = document.getElementById('row-' + tick.asset);
+            if (!row) {
+                row = document.createElement('tr');
+                row.id = 'row-' + tick.asset;
+                tbody.appendChild(row);
+            }
+            row.innerHTML =
+                `<td class="asset">${tick.asset}</td>` +
+                `<td class="price ${dir}">${fmt(tick.price, tick.asset)}</td>` +
+                `<td class="time">${fmtTime(tick.timestamp)}</td>`;
+        }
+
+        function addLog(msg) {
+            const p = document.createElement('p');
+            p.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+            log.prepend(p);
+            if (log.children.length > 10) log.removeChild(log.lastChild);
+        }
+
+        function connect() {
+            const socket = new SockJS('/ws');
+            const client = Stomp.over(socket);
+            client.debug = null;
+
+            client.connect({}, function () {
+                status.textContent = 'CONECTADO';
+                status.className   = 'connected';
+                addLog('Conectado al servidor.');
+
+                client.subscribe('/topic/ticks', function (frame) {
+                    try {
+                        const tick = JSON.parse(frame.body);
+                        updateRow(tick);
+                    } catch (e) {
+                        addLog('Error parseando mensaje: ' + e.message);
+                    }
+                });
+            }, function (err) {
+                status.textContent = 'DESCONECTADO';
+                status.className   = 'disconnected';
+                addLog('Desconectado. Reintentando en 5s...');
+                setTimeout(connect, 5000);
+            });
+        }
+
+        connect();
+    </script>
+</body>
+</html>
