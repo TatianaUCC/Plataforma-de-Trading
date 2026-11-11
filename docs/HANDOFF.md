@@ -114,7 +114,41 @@ Ver `docs/DECISIONS.md` para justificaciones completas (D-01 a D-16).
 
 ## Última etapa completada
 
-**Etapa 1 — Infraestructura Docker Compose** — 10 de noviembre de 2026 ✅ VERIFICADA EN VIVO
+**Etapa 2 — `market_data_feed`** — 10 de noviembre de 2026 ✅
+
+### Archivos implementados
+```
+services/market_data_feed/src/main/java/com/trading/marketfeed/
+├── MarketDataFeedApplication.java
+├── adapter/out/RabbitMQTickPublisher.java
+├── config/RabbitMQConfig.java
+├── domain/model/AssetCode.java           (record, Fail-Fast)
+├── domain/model/TickPriceRecord.java     (record, Fail-Fast)
+├── domain/port/out/TickPublisherPort.java (interface DIP)
+└── service/PriceGeneratorService.java
+services/market_data_feed/src/main/resources/application.yml
+```
+
+### Pruebas: 21/21 ✅ BUILD SUCCESS
+- `AssetCodeTest` (6): validaciones Fail-Fast del record
+- `TickPriceRecordTest` (5): validaciones Fail-Fast del record
+- `PriceGeneratorServiceTest` (5): Mockito — publica 5 ticks, precios positivos, rango ±2%
+- `RabbitMQTickPublisherTest` (5): Mockito — routing keys correctos por tipo de activo
+
+### Decisiones de diseño aplicadas
+- Random Walk ±2% (D-08)
+- 5 activos: BTC, ETH, EURUSD, GOOGL, AMZN (D-07)
+- DIP: `TickPublisherPort` desacopla el dominio de RabbitMQ
+- Routing keys: `ticks.crypto.*`, `ticks.forex.*`, `ticks.stock.*`
+- Credenciales via variables de entorno en `application.yml`
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 3 — `live_dashboard_backend`**
+
+Consume ticks de RabbitMQ (binding `ticks.#`) y los retransmite por WebSocket/STOMP en el puerto 8081 a `live_ticker.html`.
 
 ### Archivos de infraestructura
 - `docker-compose.yml` — Zookeeper, Kafka, kafka-init, RabbitMQ, PostgreSQL

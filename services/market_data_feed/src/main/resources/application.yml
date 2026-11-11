@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: market-data-feed
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    virtual-host: /
+    connection-timeout: 10000
+
+market:
+  tick:
+    interval-ms: 1000
+
+logging:
+  level:
+    com.trading.marketfeed: INFO

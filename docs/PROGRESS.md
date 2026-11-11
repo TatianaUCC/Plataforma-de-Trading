@@ -11,15 +11,14 @@
 |---|---|---|---|---|
 | 0 — Estructura Maven | ✅ Completado | 9 Nov 2026 | 9 Nov 2026 | 8 pom.xml, 32/32 checks OK |
 | 1 — Infraestructura Docker | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | Todos los servicios healthy. Topics Kafka verificados con --describe. Ver detalle abajo. |
-| 2 — Modelo de dominio + tests | ⬜ Pendiente | — | — | — |
-| 3 — market_data_feed | ⬜ Pendiente | — | — | — |
-| 4 — live_dashboard_backend | ⬜ Pendiente | — | — | — |
-| 5 — ingestion_bridge | ⬜ Pendiente | — | — | — |
-| 6 — analytics_engine + PostgreSQL | ⬜ Pendiente | — | — | — |
-| 7 — investment_dashboard_backend | ⬜ Pendiente | — | — | — |
-| 8 — notification_router + workers | ⬜ Pendiente | — | — | — |
-| 9 — Dockerfiles + Compose final | ⬜ Pendiente | — | — | — |
-| 10 — Prueba integral | ⬜ Pendiente | — | — | — |
+| 2 — market_data_feed | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | 21/21 pruebas verdes. BUILD SUCCESS. |
+| 3 — live_dashboard_backend | ⬜ Pendiente | — | — | — |
+| 4 — ingestion_bridge | ⬜ Pendiente | — | — | — |
+| 5 — analytics_engine + PostgreSQL | ⬜ Pendiente | — | — | — |
+| 6 — investment_dashboard_backend | ⬜ Pendiente | — | — | — |
+| 7 — notification_router + workers | ⬜ Pendiente | — | — | — |
+| 8 — Dockerfiles + Compose final | ⬜ Pendiente | — | — | — |
+| 9 — Prueba integral | ⬜ Pendiente | — | — | — |
 
 **Leyenda:** ⬜ Pendiente | 🔄 En progreso | ✅ Completado | ❌ Bloqueado
 
@@ -37,7 +36,17 @@
 | `postgres-db` | ✅ healthy | `docker compose ps` |
 | `kafka-init` | ✅ exitoso (exit 0) | `docker compose logs kafka-init` |
 
-**Topics de Kafka verificados con `kafka-topics --describe`:**
+### Etapa 2 — market_data_feed (10 Nov 2026)
+
+**Pruebas ejecutadas con `maven:3.9.6-eclipse-temurin-17-alpine` en Docker:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `RabbitMQTickPublisherTest` | 5 | ✅ PASS |
+| `AssetCodeTest` | 6 | ✅ PASS |
+| `TickPriceRecordTest` | 5 | ✅ PASS |
+| `PriceGeneratorServiceTest` | 5 | ✅ PASS |
+| **Total** | **21** | **✅ BUILD SUCCESS** |
 
 | Topic | Particiones | Replication Factor | Estado |
 |---|---|---|---|
