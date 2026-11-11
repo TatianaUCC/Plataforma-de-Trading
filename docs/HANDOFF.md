@@ -114,7 +114,87 @@ Ver `docs/DECISIONS.md` para justificaciones completas (D-01 a D-16).
 
 ## Última etapa completada
 
-**Etapa 2 — `market_data_feed`** — 10 de noviembre de 2026 ✅
+**Etapa 4 — `ingestion_bridge`** — 11 de noviembre de 2026 ✅
+
+### Archivos implementados
+```
+services/ingestion_bridge/src/main/java/com/trading/bridge/
+├── IngestionBridgeApplication.java
+├── adapter/in/BridgeTickListener.java      (ACK manual RabbitMQ)
+├── adapter/out/KafkaTickPublisher.java     (send bloqueante con timeout)
+├── application/BridgeService.java
+├── config/KafkaConfig.java                 (acks=all, retries=3)
+├── config/RabbitMQConfig.java              (ACK MANUAL, cola bridge_ticks_queue)
+├── domain/model/TickEvent.java             (record, Fail-Fast)
+└── domain/port/out/TickKafkaPublisherPort.java (interface DIP)
+services/ingestion_bridge/src/main/resources/application.yml
+```
+
+### Pruebas: 13/13 ✅ BUILD SUCCESS
+- `TickEventTest` (6): validaciones Fail-Fast del record
+- `BridgeServiceTest` (3): Mockito — delega al puerto, propaga excepción
+- `BridgeTickListenerTest` (4): ACK tras Kafka OK, NACK+requeue ante fallo
+
+### Integración real verificada
+- Bridge conectó a RabbitMQ (localhost:5672) y Kafka (localhost:9094)
+- Cola `bridge_ticks_queue` con binding `ticks.#` creada automáticamente
+- 5 activos publicados en Kafka `historical_ticks` cada ~1s
+- Particiones consistentes: BTC→p2, ETH→p0, EURUSD→p4, GOOGL→p1, AMZN→p1
+- Orden garantizado por activo (misma clave → misma partición)
+
+### Manejo de errores
+- ACK manual RabbitMQ: el mensaje solo se confirma cuando Kafka responde
+- Fallo Kafka → `basicNack(requeue=true)` → tick vuelve a `bridge_ticks_queue`
+- `acks=all` en Kafka producer: confirmación de todos los ISR
+- 3 reintentos con backoff de 500ms ante errores transitorios
+- Timeout de 5s en `send().get()`: fallo rápido ante Kafka no disponible
+
+### Dependencia añadida
+- `jackson-datatype-jsr310` en `pom.xml` — deserialización de `Instant` ISO-8601
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 5 — `analytics_engine`**
+
+Consumidor Kafka de `historical_ticks`. Mantiene `AssetTracker` en memoria por activo, calcula SMA de los últimos 5 ticks (patrón Strategy), gestiona estados NORMAL/MOMENTUM_ALTO/ALERTA_DISPARADA (patrón State), persiste señales en PostgreSQL y publica en Kafka `trading_signals`.
+
+### Archivos implementados
+```
+services/live_dashboard_backend/src/main/java/com/trading/livedashboard/
+├── LiveDashboardApplication.java
+├── adapter/in/TickMessageListener.java
+├── adapter/out/WebSocketTickBroadcaster.java
+├── config/RabbitMQConfig.java
+├── config/WebSocketConfig.java
+├── domain/model/TickMessage.java           (record, Fail-Fast)
+└── domain/port/out/TickBroadcastPort.java  (interface DIP)
+services/live_dashboard_backend/src/main/resources/application.yml
+services/live_dashboard_backend/src/main/resources/static/live_ticker.html
+```
+
+### Pruebas: 15/15 ✅ BUILD SUCCESS
+- `TickMessageTest` (7): validaciones Fail-Fast del record
+- `TickMessageListenerTest` (4): Mockito — delega al puerto de broadcast
+- `WebSocketTickBroadcasterTest` (4): Mockito — topic `/topic/ticks`, payload correcto
+
+### Integración real verificada
+- Tomcat en puerto 8081, conexión a RabbitMQ establecida en 4.8s
+- Cola `live_ticks_queue` con binding `ticks.#` creada automáticamente
+- Ticks recibidos de los 5 activos (BTC, ETH, EURUSD, GOOGL, AMZN) cada ~1s
+- `live_ticker.html` disponible en http://localhost:8081/live_ticker.html
+
+### Dependencia añadida
+- `jackson-datatype-jsr310` en `pom.xml` — misma razón que en `market_data_feed` (Instant ISO-8601)
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 4 — `ingestion_bridge`**
+
+Consume ticks de RabbitMQ (`ticks.#`) y los publica en Kafka topic `historical_ticks` usando el nombre del activo como partition key.
 
 ### Archivos implementados
 ```

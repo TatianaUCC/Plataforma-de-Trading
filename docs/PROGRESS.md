@@ -12,8 +12,8 @@
 | 0 — Estructura Maven | ✅ Completado | 9 Nov 2026 | 9 Nov 2026 | 8 pom.xml, 32/32 checks OK |
 | 1 — Infraestructura Docker | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | Todos los servicios healthy. Topics Kafka verificados con --describe. Ver detalle abajo. |
 | 2 — market_data_feed | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | 21/21 pruebas verdes. BUILD SUCCESS. |
-| 3 — live_dashboard_backend | ⬜ Pendiente | — | — | — |
-| 4 — ingestion_bridge | ⬜ Pendiente | — | — | — |
+| 3 — live_dashboard_backend | ✅ Completado | 11 Nov 2026 | 11 Nov 2026 | 15/15 pruebas verdes. Integración real verificada. |
+| 4 — ingestion_bridge | ✅ Completado | 11 Nov 2026 | 11 Nov 2026 | 13/13 pruebas verdes. Integración real: 5 activos publicados en Kafka con partición fija. |
 | 5 — analytics_engine + PostgreSQL | ⬜ Pendiente | — | — | — |
 | 6 — investment_dashboard_backend | ⬜ Pendiente | — | — | — |
 | 7 — notification_router + workers | ⬜ Pendiente | — | — | — |
@@ -36,7 +36,39 @@
 | `postgres-db` | ✅ healthy | `docker compose ps` |
 | `kafka-init` | ✅ exitoso (exit 0) | `docker compose logs kafka-init` |
 
-### Etapa 2 — market_data_feed (10 Nov 2026)
+### Etapa 4 — ingestion_bridge (11 Nov 2026)
+
+**Pruebas ejecutadas con Maven 3.9.6 + Java 17:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `TickEventTest` | 6 | ✅ PASS |
+| `BridgeServiceTest` | 3 | ✅ PASS |
+| `BridgeTickListenerTest` | 4 | ✅ PASS |
+| **Total** | **13** | **✅ BUILD SUCCESS** |
+
+**Integración real verificada:**
+- Bridge arrancó y conectó a RabbitMQ y Kafka ✅
+- Cola `bridge_ticks_queue` con binding `ticks.#` creada automáticamente ✅
+- Ticks de los 5 activos publicados en Kafka `historical_ticks` cada ~1s ✅
+- Consistencia de particiones verificada: BTC→p2, ETH→p0, EURUSD→p4, GOOGL→p1, AMZN→p1 ✅
+- ACK manual RabbitMQ + nack con requeue ante fallo Kafka ✅
+
+**Pruebas ejecutadas con Maven 3.9.6 + Java 17 local:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `TickMessageTest` | 7 | ✅ PASS |
+| `TickMessageListenerTest` | 4 | ✅ PASS |
+| `WebSocketTickBroadcasterTest` | 4 | ✅ PASS |
+| **Total** | **15** | **✅ BUILD SUCCESS** |
+
+**Integración real verificada:**
+- Spring Boot arrancó en 4.8s, Tomcat en puerto 8081 ✅
+- Conexión a RabbitMQ (localhost:5672) establecida ✅
+- Cola `live_ticks_queue` creada con binding `ticks.#` ✅
+- Ticks de los 5 activos recibidos cada ~1s desde `market_data_feed` ✅
+- Sin errores ni excepciones en los logs ✅
 
 **Pruebas ejecutadas con `maven:3.9.6-eclipse-temurin-17-alpine` en Docker:**
 
