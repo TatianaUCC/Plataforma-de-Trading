@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: live-dashboard-backend
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    virtual-host: /
+    connection-timeout: 10000
+    listener:
+      simple:
+        acknowledge-mode: auto
+
+server:
+  port: 8081
+
+logging:
+  level:
+    com.trading.livedashboard: INFO
