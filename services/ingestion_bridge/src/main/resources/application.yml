@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: ingestion-bridge
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    virtual-host: /
+    connection-timeout: 10000
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+
+logging:
+  level:
+    com.trading.bridge: INFO
