@@ -6,9 +6,7 @@ spring:
     consumer:
       group-id: analytics-engine-group
       auto-offset-reset: latest
-  # PostgreSQL — configurado para que Spring Boot arranque sin error,
-  # pero JPA no escribe todavía (ddl-auto=none).
-  # La persistencia de tick_records y trading_signals se activa en etapa posterior.
+  # PostgreSQL — persistencia de tick_records y trading_signals
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:trading_db}
     username: ${POSTGRES_USER:trading_user}
