@@ -3,6 +3,8 @@ package com.trading.analytics.application;
 import com.trading.analytics.domain.model.SignalPayload;
 import com.trading.analytics.domain.model.TickRecord;
 import com.trading.analytics.domain.port.out.SignalPublisherPort;
+import com.trading.analytics.domain.port.out.SignalRepositoryPort;
+import com.trading.analytics.domain.port.out.TickRecordRepositoryPort;
 import com.trading.analytics.domain.strategy.SimpleMovingAverageStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,18 +23,26 @@ class AnalyticsServiceTest {
 
     @Mock
     private SignalPublisherPort signalPublisher;
+    @Mock
+    private SignalRepositoryPort signalRepository;
+    @Mock
+    private TickRecordRepositoryPort tickRepository;
 
     private AnalyticsService service;
 
     @BeforeEach
     void setUp() {
-        service = new AnalyticsService(new SimpleMovingAverageStrategy(), signalPublisher);
+        service = new AnalyticsService(
+            new SimpleMovingAverageStrategy(),
+            signalPublisher,
+            signalRepository,
+            tickRepository
+        );
     }
 
     @Test
     void procesarTickConMenosDe5NoPublicaSenal() {
-        TickRecord tick = new TickRecord("BTC", 60_000.0, Instant.now());
-        service.procesarTick(tick);
+        service.procesarTick(new TickRecord("BTC", 60_000.0, Instant.now()));
         service.procesarTick(new TickRecord("BTC", 61_000.0, Instant.now()));
         service.procesarTick(new TickRecord("BTC", 59_000.0, Instant.now()));
 
@@ -41,7 +51,6 @@ class AnalyticsServiceTest {
 
     @Test
     void procesarTickSuperaUmbralPublicaSenal() {
-        // 5 ticks planos seguidos de uno alto que desplaza
         for (int i = 0; i < 5; i++) {
             service.procesarTick(new TickRecord("BTC", 100.0, Instant.now()));
         }
@@ -67,15 +76,12 @@ class AnalyticsServiceTest {
 
     @Test
     void mantieneTrackersIndependientesPorActivo() {
-        // BTC con 5 ticks planos
         for (int i = 0; i < 5; i++) {
             service.procesarTick(new TickRecord("BTC", 100.0, Instant.now()));
         }
-        // ETH con 2 ticks
         service.procesarTick(new TickRecord("ETH", 3000.0, Instant.now()));
         service.procesarTick(new TickRecord("ETH", 3100.0, Instant.now()));
 
-        // BTC tiene 5 ticks, ETH tiene 2
         assertThat(service.getEstado("BTC")).isEqualTo("NORMAL");
         assertThat(service.getEstado("ETH")).isEqualTo("NORMAL");
     }
@@ -84,5 +90,53 @@ class AnalyticsServiceTest {
     void getEstadoAssetCodeNormalizaAMayusculas() {
         service.procesarTick(new TickRecord("btc", 100.0, Instant.now()));
         assertThat(service.getEstado("btc")).isEqualTo("NORMAL");
+    }
+
+    // --- Pruebas de persistencia ---
+
+    @Test
+    void procesarTickPersisteCadaTickRecibido() {
+        TickRecord tick = new TickRecord("BTC", 60_000.0, Instant.now());
+        service.procesarTick(tick);
+
+        verify(tickRepository).guardar(tick);
+    }
+
+    @Test
+    void procesarTickConSenalPersisteTickYsenal() {
+        for (int i = 0; i < 5; i++) {
+            service.procesarTick(new TickRecord("BTC", 100.0, Instant.now()));
+        }
+        service.procesarTick(new TickRecord("BTC", 200.0, Instant.now()));
+
+        // El tick del cruce y los 5 anteriores se persisten
+        verify(tickRepository, times(6)).guardar(any(TickRecord.class));
+        verify(signalRepository).guardar(any(SignalPayload.class));
+    }
+
+    @Test
+    void falloPersistenciaTickNoDetieneProcesamiento() {
+        doThrow(new RuntimeException("BD caída"))
+            .when(tickRepository).guardar(any(TickRecord.class));
+
+        service.procesarTick(new TickRecord("BTC", 60_000.0, Instant.now()));
+
+        // El tick se procesó aunque la persistencia falló
+        assertThat(service.getEstado("BTC")).isEqualTo("NORMAL");
+    }
+
+    @Test
+    void falloPersistenciaSenalNoDetienePublicacion() {
+        for (int i = 0; i < 5; i++) {
+            service.procesarTick(new TickRecord("BTC", 100.0, Instant.now()));
+        }
+
+        doThrow(new RuntimeException("BD caída"))
+            .when(signalRepository).guardar(any(SignalPayload.class));
+
+        service.procesarTick(new TickRecord("BTC", 200.0, Instant.now()));
+
+        // La señal se publicó a Kafka aunque la persistencia falló
+        verify(signalPublisher).publicar(any(SignalPayload.class));
     }
 }
