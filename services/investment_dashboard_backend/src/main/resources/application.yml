@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: investment-dashboard-backend
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: investment-dashboard-group
+      auto-offset-reset: latest
+
+server:
+  port: 8082
+
+logging:
+  level:
+    com.trading.investdashboard: INFO
