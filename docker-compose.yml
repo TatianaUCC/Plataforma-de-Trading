@@ -1,7 +1,6 @@
 # =============================================================
 # docker-compose.yml — Plataforma de Trading y Alertas
-# Etapa 1: solo infraestructura (Zookeeper, Kafka, RabbitMQ, PostgreSQL)
-# Los microservicios Java se agregarán en la Etapa 9.
+# Infraestructura + 8 microservicios Java
 # =============================================================
 
 services:
@@ -34,7 +33,6 @@ services:
 
   # -----------------------------------------------------------
   # KAFKA — broker de eventos del Cold-Path
-  # Topics: historical_ticks (5 particiones), trading_signals (3 particiones)
   # -----------------------------------------------------------
   kafka:
     image: confluentinc/cp-kafka:7.6.1
@@ -46,24 +44,20 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Dos listeners: interno (para contenedores) y externo (para host)
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      # Replicación mínima para entorno de desarrollo
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
       KAFKA_NUM_PARTITIONS: 1
-      # Retención de mensajes: 7 días (suficiente para proyecto académico)
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_SEGMENT_BYTES: 1073741824
-      # Auto-creación de topics desactivada: se crean explícitamente
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     ports:
-      - "9094:9094"   # Acceso externo desde el host
+      - "9094:9094"
     networks:
       - trading-internal
     volumes:
@@ -76,8 +70,7 @@ services:
       start_period: 30s
 
   # -----------------------------------------------------------
-  # KAFKA INIT — crea los topics necesarios al arrancar
-  # Se ejecuta una sola vez y sale (no es un servicio permanente)
+  # KAFKA INIT — crea los topics al arrancar y sale
   # -----------------------------------------------------------
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
@@ -101,7 +94,6 @@ services:
 
   # -----------------------------------------------------------
   # RABBITMQ — broker del Hot-Path
-  # Interfaz de gestión en http://localhost:15672 (guest/guest)
   # -----------------------------------------------------------
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -112,8 +104,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
       RABBITMQ_DEFAULT_VHOST: /
     ports:
-      - "5672:5672"    # AMQP — microservicios
-      - "15672:15672"  # Management UI — verificación manual
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - trading-internal
     volumes:
@@ -128,8 +120,6 @@ services:
 
   # -----------------------------------------------------------
   # POSTGRESQL — persistencia relacional
-  # Base de datos: trading_db
-  # Tablas: tick_records, trading_signals, notification_log
   # -----------------------------------------------------------
   postgres-db:
     image: postgres:15-alpine
@@ -153,11 +143,241 @@ services:
       retries: 5
       start_period: 15s
 
+  # =============================================================
+  # MICROSERVICIOS JAVA
+  # =============================================================
+
+  # -----------------------------------------------------------
+  # 1. market_data_feed — genera ticks y los publica en RabbitMQ
+  # -----------------------------------------------------------
+  market_data_feed:
+    build:
+      context: ./services/market_data_feed
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+    networks:
+      - trading-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 2. live_dashboard_backend — ticks en vivo por WebSocket
+  # -----------------------------------------------------------
+  live_dashboard_backend:
+    build:
+      context: ./services/live_dashboard_backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+    ports:
+      - "8081:8081"
+    networks:
+      - trading-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health 2>/dev/null || wget -qO- http://localhost:8081/ 2>/dev/null | grep -q '.' && exit 0 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 3. ingestion_bridge — puente RabbitMQ → Kafka
+  # -----------------------------------------------------------
+  ingestion_bridge:
+    build:
+      context: ./services/ingestion_bridge
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - trading-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 4. analytics_engine — motor de análisis (Cold-Path)
+  # -----------------------------------------------------------
+  analytics_engine:
+    build:
+      context: ./services/analytics_engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: trading_db
+      POSTGRES_USER: trading_user
+      POSTGRES_PASS: trading_pass
+    networks:
+      - trading-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+  # -----------------------------------------------------------
+  # 5. investment_dashboard_backend — señales por WebSocket
+  # -----------------------------------------------------------
+  investment_dashboard_backend:
+    build:
+      context: ./services/investment_dashboard_backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8082:8082"
+    networks:
+      - trading-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health 2>/dev/null || wget -qO- http://localhost:8082/ 2>/dev/null | grep -q '.' && exit 0 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 6. notification_router — enruta señales Kafka → RabbitMQ
+  # -----------------------------------------------------------
+  notification_router:
+    build:
+      context: ./services/notification_router
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: trading_db
+      POSTGRES_USER: trading_user
+      POSTGRES_PASS: trading_pass
+    networks:
+      - trading-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 7. email_worker — simula envío de emails (x2 réplicas)
+  # -----------------------------------------------------------
+  email_worker:
+    build:
+      context: ./services/email_worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+    networks:
+      - trading-internal
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # -----------------------------------------------------------
+  # 8. console_alert_worker — imprime alertas en consola
+  # -----------------------------------------------------------
+  console_alert_worker:
+    build:
+      context: ./services/console_alert_worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+    networks:
+      - trading-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
 # =============================================================
 # REDES
-# trading-internal: red bridge interna, aísla los servicios
-#                   del exterior. Los microservicios Java
-#                   también se conectarán a esta red.
 # =============================================================
 networks:
   trading-internal:
@@ -165,7 +385,7 @@ networks:
     name: trading-internal
 
 # =============================================================
-# VOLÚMENES NOMBRADOS — persistencia ante reinicios
+# VOLÚMENES NOMBRADOS
 # =============================================================
 volumes:
   zookeeper-data:
