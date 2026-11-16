@@ -114,7 +114,176 @@ Ver `docs/DECISIONS.md` para justificaciones completas (D-01 a D-16).
 
 ## Última etapa completada
 
-**Etapa 4 — `ingestion_bridge`** — 11 de noviembre de 2026 ✅
+**Etapa 9 — `investment_dashboard_backend`** — 16 de noviembre de 2026 ✅
+
+Los 8 microservicios del proyecto están implementados y tienen pruebas unitarias pasando.
+
+### Resumen de microservicios completados
+
+| Servicio | Pruebas | Integración |
+|---|---|---|
+| `market_data_feed` | 21/21 ✅ | Real ✅ |
+| `live_dashboard_backend` | 15/15 ✅ | Real ✅ |
+| `ingestion_bridge` | 13/13 ✅ | Real ✅ |
+| `analytics_engine` | 35/35 ✅ | Real ✅ |
+| `notification_router` | 23/23 ✅ | Real ✅ |
+| `email_worker` | 14/14 ✅ | — |
+| `console_alert_worker` | 14/14 ✅ | — |
+| `investment_dashboard_backend` | 14/14 ✅ | — |
+
+### Próxima tarea exacta
+
+**Dockerfiles multietapa + ajuste final de Docker Compose**
+
+Crear un `Dockerfile` multietapa para cada uno de los 8 microservicios y actualizar el `docker-compose.yml` con:
+- Todos los microservicios Java con `deploy.resources.limits`
+- `deploy.replicas: 2` para `email_worker`
+- Variables de entorno para cada servicio
+- `depends_on` con `condition: service_healthy` para los brokers
+
+### Archivos implementados
+```
+services/notification_router/src/main/java/com/trading/notificationrouter/
+├── NotificationRouterApplication.java
+├── adapter/in/SignalKafkaConsumer.java          (groupId: notification-router-group)
+├── adapter/out/RabbitMQNotificationPublisher.java (email_queue + console_alerts Fanout)
+├── application/NotificationRouterService.java
+├── config/KafkaConsumerConfig.java
+├── config/RabbitMQConfig.java
+├── domain/model/SignalEvent.java                (record, Fail-Fast)
+├── domain/port/out/NotificationPublisherPort.java
+├── domain/port/out/NotificationLogRepositoryPort.java
+├── infrastructure/jpa/NotificationLogEntity.java
+├── infrastructure/jpa/NotificationLogJpaRepository.java
+├── infrastructure/jpa/TradingSignalLookupEntity.java  (solo lectura)
+├── infrastructure/jpa/TradingSignalLookupRepository.java
+└── infrastructure/adapter/out/JpaNotificationLogRepository.java
+services/notification_router/src/main/resources/application.yml
+```
+
+### Pruebas: 18/18 ✅ BUILD SUCCESS
+
+### Integración real verificada
+- Consumió 6 señales históricas de Kafka `trading_signals`
+- Publicó en `email_queue` y Fanout `console_alerts`
+- 12 registros en `notification_log` (6 EMAIL + 6 CONSOLE)
+- FK `signal_id` resuelto consultando la tabla `trading_signals`
+
+### Estrategia de errores documentada
+- Fallo RabbitMQ → propaga excepción → Kafka no hace ACK → reintento (at-least-once)
+- Fallo PostgreSQL → se loguea ERROR, no detiene el despacho ya completado
+- Posible duplicación si el servicio falla tras publicar en RabbitMQ pero antes del ACK Kafka
+
+### Pendiente de esta etapa
+- `email_worker` y `console_alert_worker` aún no implementados (Etapa 8)
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 8 — `email_worker` y `console_alert_worker`**
+
+Workers que consumen de RabbitMQ e imprimen los mensajes de alerta:
+- `email_worker`: consume `email_queue` → imprime `"ENVIANDO EMAIL: ¡Momento de Invertir! Señal de COMPRA para BTC"`
+- `console_alert_worker`: consume Fanout `console_alerts` → imprime `"*** ALERTA DE SISTEMA: SEÑAL DE COMPRA EN BTC ***"`
+
+### Nuevos archivos implementados (esta etapa)
+```
+infrastructure/jpa/
+├── TickRecordEntity.java           (@Entity → tabla tick_records)
+├── TradingSignalEntity.java        (@Entity → tabla trading_signals, método marcarNotificada())
+├── TickRecordJpaRepository.java    (JpaRepository Spring Data)
+└── TradingSignalJpaRepository.java (JpaRepository Spring Data)
+
+infrastructure/adapter/out/
+├── JpaTickRecordRepository.java    (implementa TickRecordRepositoryPort)
+└── JpaSignalRepository.java        (implementa SignalRepositoryPort)
+
+domain/port/out/
+├── TickRecordRepositoryPort.java   (interface DIP)
+└── SignalRepositoryPort.java       (interface DIP)
+```
+
+### Modificados
+- `application/AnalyticsService.java` — ahora recibe `SignalRepositoryPort` y `TickRecordRepositoryPort` por constructor; persiste tick y señal tras procesamiento; errores de BD se loguean pero no detienen el flujo
+- `test/.../AnalyticsServiceTest.java` — actualizado al nuevo constructor de 4 parámetros + 4 pruebas de persistencia añadidas
+
+### Pruebas: 35/35 ✅ BUILD SUCCESS
+Incluyendo 4 pruebas de persistencia y manejo de errores de BD.
+
+### Comportamiento ante fallos de BD
+Si PostgreSQL no responde, el tick sigue procesándose y la señal sigue publicándose a Kafka. El error se loguea a nivel ERROR. La auditoría es secundaria al flujo principal.
+
+### Integración real con PostgreSQL: ✅ Verificada
+- `tick_records`: 90 filas guardadas
+- `trading_signals`: 6 señales guardadas (BTC, EURUSD, AMZN con precio, SMA y timestamp)
+- Señales publicadas también en Kafka `trading_signals`
+
+### Pendiente de verificar con Docker activo
+~~Pendiente~~ — completado.
+
+### notification_log
+Tabla existe en BD pero su escritura corresponde a `notification_router` — **no implementada en esta etapa** (Etapa 7 del cronograma).
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 7 — `investment_dashboard_backend`**
+
+Consume señales de Kafka `trading_signals` (groupId: `investment-dashboard-group`) y las retransmite por WebSocket/STOMP en el puerto 8082 a `investment.html`.
+
+### Archivos implementados
+```
+services/analytics_engine/src/main/java/com/trading/analytics/
+├── AnalyticsEngineApplication.java
+├── adapter/in/HistoricalTickConsumer.java      (@KafkaListener historical_ticks)
+├── adapter/out/KafkaSignalPublisher.java        (publica en trading_signals)
+├── application/AnalyticsService.java            (Map<String, AssetTracker>)
+├── config/KafkaConsumerConfig.java              (JsonDeserializer por constructor)
+├── config/KafkaProducerConfig.java              (acks=all, sin __TypeId__)
+├── domain/model/AssetCode.java                  (record, Fail-Fast)
+├── domain/model/AssetTracker.java               (entidad rica: Strategy + State)
+├── domain/model/SignalPayload.java              (record)
+├── domain/model/TickRecord.java                 (record, contrato entrada)
+├── domain/port/out/SignalPublisherPort.java     (interface DIP)
+├── domain/state/AssetState.java                 (interface patrón State)
+├── domain/state/AssetStateContext.java          (interface contexto)
+├── domain/state/NormalState.java                (evalúa umbral → genera señal)
+├── domain/state/MomentumAltoState.java          (→ transiciona a AlertaDisparada)
+├── domain/state/AlertaDisparadaState.java        (→ vuelve a Normal)
+├── domain/strategy/IndicatorStrategy.java       (interface patrón Strategy)
+└── domain/strategy/SimpleMovingAverageStrategy.java  (SMA-5, umbral 5%)
+services/analytics_engine/src/main/resources/application.yml
+```
+
+### Pruebas: 27/27 ✅ BUILD SUCCESS
+- `AssetCodeTest` (4): validaciones Fail-Fast
+- `SimpleMovingAverageStrategyTest` (7): cálculo SMA, umbral 5%, ventana mínima
+- `AssetTrackerTest` (11): registro de precios, generación de señales, transiciones de estado completas
+- `AnalyticsServiceTest` (5): Mockito — delegación, trackers independientes, normalización
+
+### Integración real verificada
+- Consumer group `analytics-engine-group` asignado a las 5 particiones
+- Offsets en avance confirmado (partición 0: 441, partición 1: 882)
+- Sin señales en tiempo de prueba (esperado con Random Walk ±2%)
+
+### Patrones de diseño implementados
+- **Strategy**: `IndicatorStrategy` / `SimpleMovingAverageStrategy` (SMA-5, umbral 1.05)
+- **State**: `NormalState` → `MomentumAltoState` → `AlertaDisparadaState` → `NormalState`
+- **DIP**: `SignalPublisherPort` desacopla dominio de Kafka
+- **Value Objects**: `AssetCode`, `TickRecord`, `SignalPayload` (records con Fail-Fast)
+
+### Pendiente
+- Persistencia JPA de `tick_records` y `trading_signals` en PostgreSQL (configuración lista, se activa después)
+
+---
+
+## Próxima tarea exacta
+
+**Etapa 6 — `investment_dashboard_backend`**
+
+Consume señales de Kafka `trading_signals` (groupId: investment-dashboard-group) y las retransmite por WebSocket/STOMP en el puerto 8082 a `investment.html`.
 
 ### Archivos implementados
 ```

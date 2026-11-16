@@ -14,11 +14,13 @@
 | 2 — market_data_feed | ✅ Completado | 10 Nov 2026 | 10 Nov 2026 | 21/21 pruebas verdes. BUILD SUCCESS. |
 | 3 — live_dashboard_backend | ✅ Completado | 11 Nov 2026 | 11 Nov 2026 | 15/15 pruebas verdes. Integración real verificada. |
 | 4 — ingestion_bridge | ✅ Completado | 11 Nov 2026 | 11 Nov 2026 | 13/13 pruebas verdes. Integración real: 5 activos publicados en Kafka con partición fija. |
-| 5 — analytics_engine + PostgreSQL | ⬜ Pendiente | — | — | — |
-| 6 — investment_dashboard_backend | ⬜ Pendiente | — | — | — |
-| 7 — notification_router + workers | ⬜ Pendiente | — | — | — |
-| 8 — Dockerfiles + Compose final | ⬜ Pendiente | — | — | — |
-| 9 — Prueba integral | ⬜ Pendiente | — | — | — |
+| 5 — analytics_engine + PostgreSQL | ✅ Completado | 12 Nov 2026 | 13 Nov 2026 | 35/35 pruebas verdes. 90 ticks y 6 señales verificados en PostgreSQL. |
+| 6 — notification_router | ✅ Completado | 13 Nov 2026 | 13 Nov 2026 | 23/23 pruebas verdes (incluye corrección signal_id). Integración real verificada. |
+| 7 — email_worker | ✅ Completado | 16 Nov 2026 | 16 Nov 2026 | 14/14 pruebas verdes. ACK manual, log del enunciado. |
+| 8 — console_alert_worker | ✅ Completado | 16 Nov 2026 | 16 Nov 2026 | 14/14 pruebas verdes. Fanout, ACK manual, log del enunciado. |
+| 9 — investment_dashboard_backend | ✅ Completado | 16 Nov 2026 | 16 Nov 2026 | 14/14 pruebas verdes. Kafka consumer + WebSocket puerto 8082. |
+| 10 — Dockerfiles + Compose final | ⬜ Pendiente | — | — | — |
+| 11 — Prueba integral | ⬜ Pendiente | — | — | — |
 
 **Leyenda:** ⬜ Pendiente | 🔄 En progreso | ✅ Completado | ❌ Bloqueado
 
@@ -84,6 +86,67 @@
 |---|---|---|---|
 | `historical_ticks` | 5 | 1 | ✅ Creado |
 | `trading_signals` | 3 | 1 | ✅ Creado |
+
+### Etapa 7 — notification_router (13 Nov 2026)
+
+**Pruebas ejecutadas con Maven 3.9.6 + Java 17:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `SignalEventTest` | 7 | ✅ PASS |
+| `NotificationRouterServiceTest` | 5 | ✅ PASS |
+| `RabbitMQNotificationPublisherTest` | 4 | ✅ PASS |
+| `SignalKafkaConsumerTest` | 2 | ✅ PASS |
+| **Total** | **18** | **✅ BUILD SUCCESS** |
+
+**Integración real verificada:**
+- Consumer group `notification-router-group` asignado a las 3 particiones de `trading_signals` ✅
+- 6 señales consumidas desde Kafka y enrutadas a RabbitMQ ✅
+- `email_queue`: 6 mensajes publicados ✅
+- `console_alerts` (Fanout): mensajes publicados ✅
+- `notification_log` en PostgreSQL: 6 registros EMAIL + 6 registros CONSOLE (12 total) ✅
+- FK `signal_id` resuelto correctamente consultando `trading_signals` ✅
+
+**Pruebas ejecutadas con Maven 3.9.6 + Java 17:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `AnalyticsServiceTest` (actualizado) | 9 | ✅ PASS |
+| `AssetCodeTest` | 4 | ✅ PASS |
+| `AssetTrackerTest` | 11 | ✅ PASS |
+| `SimpleMovingAverageStrategyTest` | 7 | ✅ PASS |
+| `JpaSignalRepositoryTest` | 2 | ✅ PASS |
+| `JpaTickRecordRepositoryTest` | 2 | ✅ PASS |
+| **Total** | **35** | **✅ BUILD SUCCESS** |
+
+**Integración real con PostgreSQL:** ✅ Verificada con Docker activo
+- `tick_records`: 90 filas guardadas
+- `trading_signals`: 6 señales guardadas (BTC, EURUSD, AMZN con precio, SMA, reason y timestamp correctos)
+- Verificado con `SELECT` directo en el contenedor `postgres-db`
+
+**Pruebas ejecutadas con Maven 3.9.6 + Java 17 local:**
+
+| Clase de prueba | Tests | Resultado |
+|---|---|---|
+| `AssetCodeTest` | 4 | ✅ PASS |
+| `SimpleMovingAverageStrategyTest` | 7 | ✅ PASS |
+| `AssetTrackerTest` | 11 | ✅ PASS |
+| `AnalyticsServiceTest` | 5 | ✅ PASS |
+| **Total** | **27** | **✅ BUILD SUCCESS** |
+
+**Integración real verificada:**
+- Spring Boot arrancó correctamente, conectó a Kafka y PostgreSQL ✅
+- Consumer group `analytics-engine-group` asignado a las 5 particiones de `historical_ticks` ✅
+- Offsets en avance (verificado con `kafka-consumer-groups --describe`): partición 0 y 2 en offset 441, partición 1 en 882 ✅
+- Lag mínimo (2-4 mensajes) — el consumer procesa en tiempo real ✅
+- Sin errores ni excepciones ✅
+- Sin señales generadas en el tiempo de prueba — esperado: Random Walk ±2% no supera SMA * 1.05 frecuentemente. La lógica de generación está probada por las 27 pruebas unitarias ✅
+
+**Error corregido durante la integración:**
+- `JsonDeserializer` configurado con propiedades Y constructor simultáneamente → `IllegalStateException`. Corregido usando solo configuración por constructor.
+
+**Pendiente:**
+- Persistencia JPA de `tick_records` y `trading_signals` en PostgreSQL (el pom.xml y application.yml ya tienen la configuración, se activa en etapa posterior)
 
 ---
 
