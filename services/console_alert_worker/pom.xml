@@ -49,6 +49,12 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- Jackson JSR310 — soporte para tipos de fecha/hora en JSON -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
         <!-- ===== Testing ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
